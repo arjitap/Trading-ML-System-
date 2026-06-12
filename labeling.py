@@ -1,88 +1,68 @@
 import pandas as pd
 import numpy as np
 
-def detect_crossovers_and_label(df: pd.DataFrame, risk_reward: float = 2.0, lookahead: int = 24) -> pd.DataFrame:
-    """
-    Scans data for EMA 9/20 crossovers and traces future prices to label outcomes.
-    """
-    print("Scanning for crossovers and calculating trade outcomes...")
+def detect_crossovers_and_label(df: pd.DataFrame, risk_reward: float = 2.0) -> pd.DataFrame:
+    print(" Executing Directional Crossover Detection and Target Labeling Engine...")
+    
+    processed_df = df.copy()
     
     
-    df['Prev_EMA_9'] = df['EMA_9'].shift(1)
-    df['Prev_EMA_20'] = df['EMA_20'].shift(1)
+    # 1 = Bullish Cross (9 EMA goes over 20 EMA), -1 = Bearish Cross (9 EMA drops below 20 EMA)
+    processed_df['Prev_EMA_Diff'] = processed_df['EMA_9'].shift(1) - processed_df['EMA_20'].shift(1)
+    processed_df['Curr_EMA_Diff'] = processed_df['EMA_9'] - processed_df['EMA_20']
     
-    # Initialize a crossover indicator column
-    # 1 = Bullish Cross (Buy), -1 = Bearish Cross (Sell), 0 = No Cross
-    df['Crossover'] = 0
+    processed_df['Crossover'] = 0
+    # Bullish Cross condition
+    processed_df.loc[(processed_df['Prev_EMA_Diff'] <= 0) & (processed_df['Curr_EMA_Diff'] > 0), 'Crossover'] = 1
+    # Bearish Cross condition
+    processed_df.loc[(processed_df['Prev_EMA_Diff'] >= 0) & (processed_df['Curr_EMA_Diff'] < 0), 'Crossover'] = -1
     
-    bullish_cross = (df['Prev_EMA_9'] <= df['Prev_EMA_20']) & (df['EMA_9'] > df['EMA_20'])
-    bearish_cross = (df['Prev_EMA_9'] >= df['Prev_EMA_20']) & (df['EMA_9'] < df['EMA_20'])
+    processed_df['Target'] = np.nan
+    lookahead = 24  # Max time window to hold a trade (24 hours)
     
-    df.loc[bullish_cross, 'Crossover'] = 1
-    df.loc[bearish_cross, 'Crossover'] = -1
-    
-    #  Horizon Scan: Read future rows to label trades as Win (1) or Loss (0)
-    close_prices = df['Close'].values
-    atr_values = df['ATR'].values
-    crossovers = df['Crossover'].values
-    targets = np.full(len(df), np.nan)
-    
-    
-    for i in range(len(df) - lookahead):
-        if crossovers[i] == 0:
+    # Scanning loop to label BOTH Bullish and Bearish trade outcomes
+    for i in range(len(processed_df) - lookahead):
+        current_cross = processed_df['Crossover'].iloc[i]
+        
+        if current_cross == 0:
             continue
             
-        entry_price = close_prices[i]
-        atr = atr_values[i]
+        entry_price = processed_df['Close'].iloc[i]
+        atr = processed_df['ATR'].iloc[i]
         
-        # Set boundaries based on volatility (ATR)
-        stop_loss_distance = 1.5 * atr
-        take_profit_distance = risk_reward * stop_loss_distance
-        
-        if crossovers[i] == 1:  # Bullish Buy Entry
-            take_profit = entry_price + take_profit_distance
-            stop_loss = entry_price - stop_loss_distance
+        # Calculate brackets based on trade direction
+        if current_cross == 1:  # Bullish Long Trade
+            take_profit = entry_price + (risk_reward * atr)
+            stop_loss = entry_price - (1.5 * atr)
             
-            # Scan the subsequent hours
-            for j in range(i + 1, i + lookahead):
-                if close_prices[j] >= take_profit:
-                    targets[i] = 1  # Hit Profit Target first (Win)
+            # Look forward in time to see which barrier is breached first
+            for j in range(1, lookahead + 1):
+                future_close = processed_df['Close'].iloc[i + j]
+                if future_close >= take_profit:
+                    processed_df.iloc[i, processed_df.columns.get_loc('Target')] = 1.0  # Win
                     break
-                if close_prices[j] <= stop_loss:
-                    targets[i] = 0  # Hit Stop Loss first (Loss)
+                if future_close <= stop_loss:
+                    processed_df.iloc[i, processed_df.columns.get_loc('Target')] = 0.0  # Loss
                     break
                     
-        elif crossovers[i] == -1:  # Bearish Sell Entry
-            take_profit = entry_price - take_profit_distance
-            stop_loss = entry_price + stop_loss_distance
+        elif current_cross == -1:  # Bearish Short Trade
+            take_profit = entry_price - (risk_reward * atr)
+            stop_loss = entry_price + (1.5 * atr)
             
-            # Scan the subsequent hours
-            for j in range(i + 1, i + lookahead):
-                if close_prices[j] <= take_profit:
-                    targets[i] = 1  # Hit Profit Target first (Win)
+            # Look forward in time to see which barrier is breached first
+            for j in range(1, lookahead + 1):
+                future_close = processed_df['Close'].iloc[i + j]
+                if future_close <= take_profit:
+                    processed_df.iloc[i, processed_df.columns.get_loc('Target')] = 1.0  # Win (Price fell to target)
                     break
-                if close_prices[j] >= stop_loss:
-                    targets[i] = 0  # Hit Stop Loss first (Loss)
+                if future_close >= stop_loss:
+                    processed_df.iloc[i, processed_df.columns.get_loc('Target')] = 0.0  # Loss (Price ripped upward)
                     break
-                    
-    df['Target'] = targets
-    
-    
-    trade_setups = df[df['Crossover'].isin([1, -1])].dropna(subset=['Target'])
-    
-    print(f" Labeling complete! Extracted {len(trade_setups)} total trade events.")
-    return trade_setups
 
-# --- TEST CHECK ---
-# This links File 1, File 2, and File 3 together to make sure everything lines up.
-if __name__ == "__main__":
-    print("Testing Labeling Module ")
-    from data_loader import fetch_market_data
-    from indicators import calculate_metrics
     
-    raw_data = fetch_market_data("BTC-USD", period="3mo", interval="1h")
-    calculated_data = calculate_metrics(raw_data)
-    labeled_data = detect_crossovers_and_label(calculated_data, risk_reward=2.0)
+    trade_setups = processed_df[processed_df['Crossover'].isin([1, -1])].dropna(subset=['Target'])
     
-    print("\nOutcome Breakdown for the Machine Learning Model:")
-    print(labeled_data['Target'].value_counts().rename({1.0: "Wins (1)", 0.0: "Losses (0)"}))
+    print(f"Success! Filtered out quiet periods. Total directional trade setups tracked: {len(trade_setups)}")
+    print(trade_setups['Crossover'].value_counts().rename({1: "Bullish Crosses", -1: "Bearish Crosses"}))
+    
+    return trade_setups

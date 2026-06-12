@@ -19,7 +19,7 @@ def get_production_data(data_path: str = "final_labeled_trades.csv"):
     df['EMA_Diff'] = (df['EMA_9'] - df['EMA_20']) / df['Close']
     
     feature_cols = [
-        'Price_to_EMA9', 'Price_to_EMA20', 'Price_to_EMA50', 'Relative_Volume', 'EMA_Diff',
+        'Crossover','Price_to_EMA9', 'Price_to_EMA20', 'Price_to_EMA50', 'Relative_Volume', 'EMA_Diff',
         'EMA_Gap_Pct', 'EMA9_Slope', 'EMA20_Slope', 'RSI_Change', 'ATR_Pct', 'RSI_Above_50', 'RSI'
     ]
     df.dropna(subset=feature_cols + ['Target'], inplace=True)

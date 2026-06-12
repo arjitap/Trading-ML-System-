@@ -20,7 +20,17 @@ def train_trading_model(data_path: str = "final_labeled_trades.csv"):
     df['Price_to_EMA50'] = (df['Close'] - df['EMA_50']) / df['Close']
     df['Relative_Volume'] = df['Volume'] / df['Volume'].rolling(window=24, min_periods=1).mean()
     
-    feature_cols = ['Price_to_EMA9', 'Price_to_EMA20', 'Price_to_EMA50', 'RSI', 'ATR', 'Relative_Volume', 'EMA_Diff']
+    # Advanced Derived Features
+    df['EMA_Gap_Pct'] = (df['EMA_9'] - df['EMA_20']) / df['EMA_20']
+    df['EMA9_Slope'] = df['EMA_9'].diff()
+    df['EMA20_Slope'] = df['EMA_20'].diff()
+    df['RSI_Change'] = df['RSI'].diff()
+    df['ATR_Pct'] = df['ATR'] / df['Close']
+    df['RSI_Above_50'] = (df['RSI'] > 50).astype(int)
+    df['EMA_Diff'] = (df['EMA_9'] - df['EMA_20']) / df['Close']
+    
+    feature_cols = ['Price_to_EMA9', 'Price_to_EMA20', 'Price_to_EMA50', 'Relative_Volume', 'EMA_Diff','EMA_Gap_Pct', 'EMA9_Slope', 'EMA20_Slope', 'RSI_Change', 'ATR_Pct', 'RSI_Above_50', 'RSI']
+    df.dropna(subset=feature_cols, inplace=True)
     X = df[feature_cols]
     y = df['Target']
     

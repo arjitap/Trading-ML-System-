@@ -22,8 +22,12 @@ def calculate_metrics(df: pd.DataFrame) -> pd.DataFrame:
     # Combine them safely
     processed_df = pd.concat([processed_df, macd_df], axis=1)
     
-    # Simple Derived feature
-    processed_df['EMA_Diff'] = (processed_df['EMA_9'] - processed_df['EMA_20']) / processed_df['Close']
+    processed_df['EMA_Gap_Pct'] = (processed_df['EMA_9'] - processed_df['EMA_20']) / processed_df['EMA_20']
+    processed_df['EMA9_Slope'] = processed_df['EMA_9'].diff()
+    processed_df['EMA20_Slope'] = processed_df['EMA_20'].diff()
+    processed_df['RSI_Change'] = processed_df['RSI'].diff()
+    processed_df['ATR_Pct'] = processed_df['ATR'] / processed_df['Close']
+    processed_df['RSI_Above_50'] = (processed_df['RSI'] > 50).astype(int)
     
     # Drop empty baseline rows
     processed_df.dropna(inplace=True)
@@ -38,5 +42,5 @@ if __name__ == "__main__":
     raw_data = fetch_market_data("BTC-USD", period="2mo", interval="1h")
     calculated_data = calculate_metrics(raw_data)
     
-    print("\nVerify your new columns are appearing correctly:")
-    print(calculated_data[['Close', 'EMA_9', 'EMA_20', 'EMA_50', 'RSI']].head(3))
+    print("\nVerify our columns are appearing correctly:")
+    print(calculated_data[['Close', 'EMA_Gap_Pct', 'EMA9_Slope', 'RSI_Change', 'ATR_Pct', 'RSI_Above_50']].head(3))
